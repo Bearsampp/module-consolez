@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="module-consolez" basedir=".">
+  
+  <dirname property="project.basedir" file="${ant.file.module-consolez}"/>
+  <property name="root.dir" location="${project.basedir}/.."/>
+  <property name="build.properties" value="${project.basedir}/build.properties"/>
+  <property file="${build.properties}"/>
+  
+  <!-- Neard dev -->
+  <property name="dev.path" location="${root.dir}/dev"/>
+  <fail unless="dev.path" message="Project 'dev' not found in ${dev.path}"/>
+  <echo message="Neard dev found in ${dev.path}" level="debug"/> 
+  
+  <!-- Import build-commons.xml -->
+  <import file="${dev.path}/build/build-commons.xml"/>
+  <!-- Import build-bundle.xml -->
+  <import file="${dev.path}/build/build-bundle.xml"/>
+  
+  <target name="release.build">
+    <basename property="bundle.folder" file="${bundle.path}"/>
+    <replaceproperty src="bundle.folder" dest="bundle.version" replace="${bundle.name}" with=""/>
+    
+    <getmoduleuntouched name="${bundle.name}" version="${bundle.version}" propSrcDest="bundle.srcdest" propSrcFilename="bundle.srcfilename"/>
+    <assertfile file="${bundle.srcdest}/Console.exe"/>
+    
+    <!-- Temp copy -->
+    <copy todir="${bundle.srcdest}" overwrite="true">
+      <fileset dir="${bundle.path}" defaultexcludes="yes"/>
+    </copy>
+    
+    <!-- Deps -->
+    <if>
+      <available file="${bundle.srcdest}/deps.properties" type="file"/>
+      <then>
+        <property prefix="consolez" file="${bundle.srcdest}/deps.properties"/>
+        <!-- ANSICON -->
+        <if>
+          <isset property="consolez.ansicon"/>
+          <then>
+            <echo message="Download ANSICON"/>
+            <property name="ansicon.path" location="${bundle.srcdest}/ansicon"/>
+            <download url="${consolez.ansicon}" returnProperty="ansicon.dest"/>
+            <echo message="Check ANSICON"/>
+            <mkdir dir="${ansicon.path}"/>
+            <copy todir="${ansicon.path}" overwrite="true">
+              <fileset dir="${ansicon.dest}/x86"/>
+            </copy>
+            <assertfile file="${ansicon.path}/ansicon.exe"/>
+          </then>
+        </if>
+        <!-- Clink -->
+        <if>
+          <isset property="consolez.clink"/>
+          <then>
+            <echo message="Download Clink"/>
+            <property name="clink.path" location="${bundle.srcdest}/vendor/clink"/>
+            <download url="${consolez.clink}" returnProperty="clink.dest"/>
+            <propertyregex property="clink.basename" input="${consolez.clink}" regexp="([^/]+).zip$" select="\1"/>
+            <echo message="Check Clink"/>
+            <mkdir dir="${clink.path}"/>
+            <copy todir="${clink.path}" overwrite="true">
+              <fileset dir="${clink.dest}/${clink.basename}"/>
+            </copy>
+            <assertfile file="${clink.path}/clink.bat"/>
+          </then>
+        </if>
+        <!-- Clink completions -->
+        <if>
+          <isset property="consolez.clink_completions"/>
+          <then>
+            <echo message="Download Clink completions"/>
+            <property name="clink_completions.path" location="${bundle.srcdest}/vendor/clink-completions"/>
+            <download url="${consolez.clink_completions}" returnProperty="clink_completions.dest"/>
+            <propertyregex property="clink_completions.basename" input="${consolez.clink_completions}" regexp="([^/]+).zip$" select="\1"/>
+            <echo message="Check Clink completions"/>
+            <mkdir dir="${clink_completions.path}"/>
+            <copy todir="${clink_completions.path}" overwrite="true">
+              <fileset dir="${clink_completions.dest}/${clink_completions.basename}"/>
+            </copy>
+            <assertfile file="${clink_completions.path}/.init.lua"/>
+          </then>
+        </if>
+        <!-- GnuWin32 CoreUtils bin -->
+        <if>
+          <isset property="consolez.gnuwin32_coreutils_bin"/>
+          <then>
+            <echo message="Download GnuWin32 CoreUtils bin"/>
+            <property name="gnuwin32_coreutils_bin.path" location="${bundle.srcdest}/vendor/gnuwin32"/>
+            <download url="${consolez.gnuwin32_coreutils_bin}" returnProperty="gnuwin32_coreutils_bin.dest"/>
+            <echo message="Check GnuWin32 CoreUtils bin"/>
+            <mkdir dir="${gnuwin32_coreutils_bin.path}"/>
+            <copy todir="${gnuwin32_coreutils_bin.path}" overwrite="true">
+              <fileset dir="${gnuwin32_coreutils_bin.dest}/bin"/>
+            </copy>
+            <assertfile file="${gnuwin32_coreutils_bin.path}/ls.exe"/>
+          </then>
+        </if>
+        <!-- GnuWin32 CoreUtils dep -->
+        <if>
+          <isset property="consolez.gnuwin32_coreutils_dep"/>
+          <then>
+            <echo message="Download GnuWin32 CoreUtils dep"/>
+            <property name="gnuwin32_coreutils_dep.path" location="${bundle.srcdest}/vendor/gnuwin32"/>
+            <download url="${consolez.gnuwin32_coreutils_dep}" returnProperty="gnuwin32_coreutils_dep.dest"/>
+            <echo message="Check GnuWin32 CoreUtils dep"/>
+            <mkdir dir="${gnuwin32_coreutils_dep.path}"/>
+            <copy todir="${gnuwin32_coreutils_dep.path}" overwrite="true">
+              <fileset dir="${gnuwin32_coreutils_dep.dest}/bin"/>
+            </copy>
+            <assertfile file="${gnuwin32_coreutils_dep.path}/libintl3.dll"/>
+          </then>
+        </if>
+        <delete file="${bundle.srcdest}/deps.properties"/>
+      </then>
+    </if>
+    
+    <delete dir="${bundle.tmp.prep.path}/${bundle.folder}"/>
+    <mkdir dir="${bundle.tmp.prep.path}/${bundle.folder}"/>
+    <copy todir="${bundle.tmp.prep.path}/${bundle.folder}" overwrite="true">
+      <fileset dir="${bundle.srcdest}"/>
+    </copy>
+    <copy todir="${bundle.tmp.prep.path}/${bundle.folder}" overwrite="true">
+      <fileset dir="${bundle.path}" defaultexcludes="yes" excludes="
+        deps.properties"
+      />
+    </copy>
+  </target>
+</project>
