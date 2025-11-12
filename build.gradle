@@ -237,9 +237,38 @@ def downloadModuleUntouched(String name, String version) {
     def fullVersion = version
     def url = releases.getProperty(fullVersion)
     
+    // Fallback: fetch from GitHub if not found in local releases.properties
     if (!url) {
-        throw new GradleException("Version ${fullVersion} not found in releases.properties")
+        println "Version ${fullVersion} not found in local releases.properties"
+        println "Attempting to fetch from GitHub modules-untouched repository..."
+        
+        try {
+            def githubPropsUrl = "https://raw.githubusercontent.com/Bearsampp/modules-untouched/main/modules/${name}.properties"
+            println "Fetching: ${githubPropsUrl}"
+            
+            def connection = new URL(githubPropsUrl).openConnection()
+            connection.setRequestProperty('User-Agent', 'Bearsampp-Build')
+            connection.setConnectTimeout(10000)
+            connection.setReadTimeout(10000)
+            
+            def githubReleases = new Properties()
+            connection.inputStream.withStream { stream ->
+                githubReleases.load(stream)
+            }
+            
+            url = githubReleases.getProperty(fullVersion)
+            
+            if (!url) {
+                throw new GradleException("Version ${fullVersion} not found in GitHub modules-untouched repository either")
+            }
+            
+            println "Found version ${fullVersion} in GitHub repository"
+            
+        } catch (Exception e) {
+            throw new GradleException("Failed to fetch version ${fullVersion} from GitHub: ${e.message}")
+        }
     }
+=======
     
     println "Downloading ${name} ${version} from modules-untouched..."
     
