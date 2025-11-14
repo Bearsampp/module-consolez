@@ -34,12 +34,22 @@ ext.bundleRelease = buildProps.getProperty('bundle.release', 'r1')
 ext.bundleType = buildProps.getProperty('bundle.type', 'tools')
 ext.bundleFormat = buildProps.getProperty('bundle.format', '7z')
 
-// Build path configuration
-ext.buildBasePath = buildProps.getProperty('build.path', 'C:/Bearsampp-build')
-
-// Dev path configuration (parent directory structure)
+// Root/dev path configuration (same convention as other modules)
 def rootDir = file("${projectDir}/..").canonicalFile
 def devPath = file("${rootDir}/dev")
+
+// Define project paths (align with bruno build)
+ext.projectBasedir = projectDir.absolutePath
+ext.rootDirPath = rootDir.absolutePath
+
+// Build base path resolution priority:
+// 1) build.properties (build.path)
+// 2) Environment variable BEARSAMPP_BUILD_PATH
+// 3) Default to {root}/bearsampp-build
+def buildPathFromProps = (buildProps.getProperty('build.path', '') ?: '').trim()
+def buildPathFromEnv = System.getenv('BEARSAMPP_BUILD_PATH') ?: ''
+def defaultBuildPath = "${rootDir}/bearsampp-build"
+ext.buildBasePath = buildPathFromProps ? buildPathFromProps : (buildPathFromEnv ? buildPathFromEnv : defaultBuildPath)
 
 // Verify dev directory exists
 if (!devPath.exists()) {
@@ -48,9 +58,20 @@ if (!devPath.exists()) {
 
 println "Bearsampp dev found in ${devPath}"
 
-// Temporary build paths
-ext.bundleTmpPath = file("${System.getProperty('java.io.tmpdir')}/bearsampp-build")
-ext.bundleTmpPrepPath = file("${bundleTmpPath}/prep")
+// Shared bearsampp-build/tmp directory structure (align with bruno)
+ext.buildTmpPath = file("${buildBasePath}/tmp")
+
+// Backward compatible alias used elsewhere in this script
+ext.bundleTmpPath = buildTmpPath
+
+// Common sub-paths under tmp
+ext.bundleTmpBuildPath = file("${buildTmpPath}/bundles_build/${bundleType}/${bundleName}")
+ext.bundleTmpPrepPath  = file("${buildTmpPath}/bundles_prep/${bundleType}/${bundleName}")
+ext.bundleTmpSrcPath   = file("${buildTmpPath}/bundles_src")
+
+// Download and extract paths per-module
+ext.bundleTmpDownloadPath = file("${buildTmpPath}/downloads/${bundleName}")
+ext.bundleTmpExtractPath  = file("${buildTmpPath}/extract/${bundleName}")
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -168,13 +189,13 @@ def downloadFile(String url, File destFile) {
  * Download and extract a dependency from URL
  */
 def downloadAndExtract(String url, File destDir) {
-    // Create temp directory for download
-    def tempDir = file("${bundleTmpPath}/downloads")
-    tempDir.mkdirs()
+    // Use shared downloads cache directory
+    def downloadsDir = file(bundleTmpDownloadPath)
+    downloadsDir.mkdirs()
     
     // Determine filename from URL
     def filename = url.substring(url.lastIndexOf('/') + 1)
-    def destFile = file("${tempDir}/${filename}")
+    def destFile = file("${downloadsDir}/${filename}")
     
     // Download if not already cached
     if (!destFile.exists()) {
@@ -270,13 +291,18 @@ def downloadModuleUntouched(String name, String version) {
     }
     println "Downloading ${name} ${version} from modules-untouched..."
     
-    // Create temp directory
-    def tempDir = file("${bundleTmpPath}/untouched")
+    // Create shared download cache directory under bearsampp-build/tmp
+    def downloadsDir = file(bundleTmpDownloadPath)
+    downloadsDir.mkdirs()
+
+    // Keep a small area for untouched archives if needed in the future
+    def tempDir = file("${buildTmpPath}/untouched")
     tempDir.mkdirs()
     
     // Determine filename from URL
     def filename = url.substring(url.lastIndexOf('/') + 1)
-    def destFile = file("${tempDir}/${filename}")
+    // Cache downloads in a stable location
+    def destFile = file("${downloadsDir}/${filename}")
     
     // Download if not cached
     if (!destFile.exists()) {
@@ -285,8 +311,8 @@ def downloadModuleUntouched(String name, String version) {
         println "Using cached file: ${destFile.name}"
     }
     
-    // Extract to temp location
-    def extractDir = file("${tempDir}/${name}${version}")
+    // Extract to shared extract directory: bearsampp-build/tmp/extract/{bundleName}/{version}
+    def extractDir = file("${bundleTmpExtractPath}/${version}")
     if (extractDir.exists()) {
         delete extractDir
     }
@@ -354,7 +380,13 @@ tasks.register('info') {
         Paths:
           Project:        ${projectDir}
           Dev:            ${devPath}
-          Build Output:   ${buildBasePath}
+          Build Base:     ${buildBasePath}
+          Build Tmp:      ${buildTmpPath}
+          Tmp Prep:       ${bundleTmpPrepPath}
+          Tmp Build:      ${bundleTmpBuildPath}
+          Tmp Src:        ${bundleTmpSrcPath}
+          Tmp Download:   ${bundleTmpDownloadPath}
+          Tmp Extract:    ${bundleTmpExtractPath}
         
         Available Tasks:
           gradle info              - Show this information
@@ -667,6 +699,20 @@ tasks.register('release') {
             into consolezPrepPath
             exclude 'deps.properties'
         }
+
+        // Copy to bundles_build directory (non-zip dev artifact)
+        println ""
+        println "Copying to bundles_build directory..."
+        def nonZipBuildPath = file("${bundleTmpBuildPath}/${bundleFolder}")
+        if (nonZipBuildPath.exists()) {
+            delete nonZipBuildPath
+        }
+        nonZipBuildPath.mkdirs()
+        copy {
+            from consolezPrepPath
+            into nonZipBuildPath
+        }
+        println "Non-zip version available at: ${nonZipBuildPath}"
         
         // Determine build output path following Bearsampp pattern
         // bearsampp-build/{bundleType}/{bundleName}/{bundleRelease}
@@ -741,7 +787,33 @@ tasks.register('release') {
             println "Generating hash files..."
             generateHashFiles(archiveFile)
         }
-        
+
+        // -----------------------------------------------------------------
+        // Cleanup temporary dependency extraction folders (align with Bruno)
+        // These are only staging areas and should not persist after a build
+        // -----------------------------------------------------------------
+        println ""
+        println "Cleaning temporary dependency folders..."
+        def tempDirsToClean = [
+            file("${buildTmpPath}/ansicon-temp"),
+            file("${buildTmpPath}/clink-temp"),
+            file("${buildTmpPath}/clink-completions-temp"),
+            file("${buildTmpPath}/gnuwin32-bin-temp"),
+            file("${buildTmpPath}/gnuwin32-dep-temp")
+        ]
+
+        tempDirsToClean.each { dir ->
+            try {
+                if (dir.exists()) {
+                    delete dir
+                    println "  Removed: ${dir}"
+                }
+            } catch (Exception e) {
+                // Non-fatal: continue cleanup of other dirs
+                println "  Warning: could not remove ${dir}: ${e.message}"
+            }
+        }
+
         println ""
         println "=".multiply(70)
         println "[SUCCESS] Release build completed successfully for version ${versionToBuild}"
