@@ -244,52 +244,75 @@ def downloadAndExtract(String url, File destDir) {
 }
 
 /**
- * Download module from modules-untouched repository
+ * PRIMARY source of versions/URLs: modules-untouched consolez.properties
+ * Fallbacks: local releases.properties, then constructed standard URL
  */
-def downloadModuleUntouched(String name, String version) {
-    def releasesFile = file('releases.properties')
-    if (!releasesFile.exists()) {
-        throw new GradleException("releases.properties not found")
+def fetchModulesUntouchedProperties() {
+    def propsUrl = "https://raw.githubusercontent.com/Bearsampp/modules-untouched/main/modules/${bundleName}.properties"
+
+    println "Fetching ${bundleName}.properties from modules-untouched repository..."
+    println "  URL: ${propsUrl}"
+
+    def tempFile = file("${bundleTmpDownloadPath}/${bundleName}-untouched.properties")
+    tempFile.parentFile.mkdirs()
+
+    try {
+        new URL(propsUrl).withInputStream { input ->
+            tempFile.withOutputStream { output ->
+                output << input
+            }
+        }
+        def props = new Properties()
+        tempFile.withInputStream { props.load(it) }
+        println "  ✓ Successfully loaded ${props.size()} versions from modules-untouched"
+        return props
+    } catch (Exception e) {
+        println "  ✗ Warning: Could not fetch ${bundleName}.properties from modules-untouched: ${e.message}"
+        return null
     }
-    
-    def releases = new Properties()
-    releasesFile.withInputStream { releases.load(it) }
-    
-    def fullVersion = version
-    def url = releases.getProperty(fullVersion)
-    
-    // Fallback: fetch from GitHub if not found in local releases.properties
-    if (!url) {
-        println "Version ${fullVersion} not found in local releases.properties"
-        println "Attempting to fetch from GitHub modules-untouched repository..."
-        
-        try {
-            def githubPropsUrl = "https://raw.githubusercontent.com/Bearsampp/modules-untouched/main/modules/${name}.properties"
-            println "Fetching: ${githubPropsUrl}"
-            
-            def connection = new URL(githubPropsUrl).openConnection()
-            connection.setRequestProperty('User-Agent', 'Bearsampp-Build')
-            connection.setConnectTimeout(10000)
-            connection.setReadTimeout(10000)
-            
-            def githubReleases = new Properties()
-            connection.inputStream.withStream { stream ->
-                githubReleases.load(stream)
-            }
-            
-            url = githubReleases.getProperty(fullVersion)
-            
-            if (!url) {
-                throw new GradleException("Version ${fullVersion} not found in GitHub modules-untouched repository either")
-            }
-            
-            println "Found version ${fullVersion} in GitHub repository"
-            
-        } catch (Exception e) {
-            throw new GradleException("Failed to fetch version ${fullVersion} from GitHub: ${e.message}")
+}
+
+def downloadFromModulesUntouched(String name, String version) {
+    println "Resolving URL for ${name} ${version}..."
+
+    def untouchedProps = fetchModulesUntouchedProperties()
+    def url = null
+    if (untouchedProps) {
+        url = untouchedProps.getProperty(version)
+        if (url) {
+            println "  Found in modules-untouched properties:\n  ${url}"
+        } else {
+            println "  Version ${version} not found in modules-untouched properties"
         }
     }
-    println "Downloading ${name} ${version} from modules-untouched..."
+
+    // Fallback: local releases.properties (if present)
+    if (!url) {
+        def releasesFile = file('releases.properties')
+        if (releasesFile.exists()) {
+            def releases = new Properties()
+            releasesFile.withInputStream { releases.load(it) }
+            url = releases.getProperty(version)
+            if (url) {
+                println "  Found in local releases.properties:\n  ${url}"
+            } else {
+                println "  Version ${version} not found in local releases.properties"
+            }
+        } else {
+            println "  Local releases.properties not found"
+        }
+    }
+
+    // Fallback: construct standard URL (best-effort)
+    if (!url) {
+        // Best guess naming (may vary per module); inform the user
+        def tag = "${name.capitalize()}-${bundleRelease}"
+        def guessedFile = "${name}-${version}-win64.7z"
+        url = "https://github.com/Bearsampp/modules-untouched/releases/download/${tag}/${guessedFile}"
+        println "  Constructed fallback URL (verify manually if needed):\n  ${url}"
+    }
+
+    println "Downloading ${name} ${version}..."
     
     // Create shared download cache directory under bearsampp-build/tmp
     def downloadsDir = file(bundleTmpDownloadPath)
@@ -346,14 +369,24 @@ def downloadModuleUntouched(String name, String version) {
         ant.unzip(src: destFile, dest: extractDir, overwrite: true)
     }
     
-    // Check if extraction created a nested directory with the same name
-    def nestedDir = file("${extractDir}/${name}${version}")
-    if (nestedDir.exists() && nestedDir.isDirectory()) {
-        println "Using nested directory: ${nestedDir}"
-        return nestedDir
+    // Try to locate main Console.exe directory inside extracted tree
+    return findConsolezDirectory(extractDir) ?: extractDir
+}
+
+// Find ConsoleZ directory containing Console.exe
+def findConsolezDirectory(File extractPath) {
+    def hasExe = { File dir -> new File(dir, 'Console.exe').exists() }
+    if (!extractPath?.exists()) return null
+    if (hasExe(extractPath)) return extractPath
+    File found = null
+    def stack = new ArrayDeque<File>()
+    extractPath.listFiles()?.findAll { it.isDirectory() }?.each { stack.push(it) }
+    while (!stack.isEmpty() && found == null) {
+        def dir = stack.pop()
+        if (hasExe(dir)) { found = dir; break }
+        dir.listFiles()?.findAll { it.isDirectory() }?.each { stack.push(it) }
     }
-    
-    return extractDir
+    return found
 }
 
 // ============================================================================
@@ -391,7 +424,7 @@ tasks.register('info') {
         Available Tasks:
           gradle info              - Show this information
           gradle listVersions      - List available bundle versions
-          gradle listReleases      - List releases from releases.properties
+          gradle listReleases      - List releases from modules-untouched
           gradle release           - Build release (use -PbundleVersion=X.X.X.X)
           gradle releaseAll        - Build all available versions
           gradle verify            - Verify build environment
@@ -525,26 +558,37 @@ tasks.register('release') {
         // Get the bundle folder and version
         def bundleFolder = bundlePath.name
         def bundleVersion = bundleFolder.replace(bundleName, '')
-        
-        // Download module from modules-untouched
-        println "Downloading ${bundleName} ${bundleVersion} from modules-untouched..."
-        def bundleSrcDest = downloadModuleUntouched(bundleName, bundleVersion)
-        
-        // Verify Console.exe exists
-        def consoleExe = file("${bundleSrcDest}/Console.exe")
+
+        // Determine source location for ConsoleZ files
+        def bundleSrcFinal = bundlePath
+        def consoleExe = file("${bundleSrcFinal}/Console.exe")
         if (!consoleExe.exists()) {
-            throw new GradleException("Console.exe not found in downloaded module: ${bundleSrcDest}")
+            // Try cached extraction in bearsampp-build/tmp
+            def tmpExtractPath = file("${bundleTmpExtractPath}/${bundleVersion}")
+            def tmpConsoleDir = findConsolezDirectory(tmpExtractPath)
+            if (tmpConsoleDir && tmpConsoleDir.exists()) {
+                println "Using cached ConsoleZ binaries from bearsampp-build/tmp"
+                bundleSrcFinal = tmpConsoleDir
+            } else {
+                // Download from modules-untouched (primary) with fallbacks
+                println ""
+                println "ConsoleZ binaries not found in bin/. Downloading ConsoleZ ${bundleVersion}..."
+                println ""
+                bundleSrcFinal = downloadFromModulesUntouched(bundleName, bundleVersion)
+            }
         }
-        println "Verified: Console.exe found"
+
+        // Verify Console.exe exists in final source
+        consoleExe = file("${bundleSrcFinal}/Console.exe")
+        if (!consoleExe.exists()) {
+            throw new GradleException("Console.exe not found at ${consoleExe}")
+        }
+
+        println "Source folder: ${bundleSrcFinal}"
         println ""
         
-        // Copy files from bundle path to source destination (temp copy)
-        println "Copying bundle files..."
-        copy {
-            from bundlePath
-            into bundleSrcDest
-            exclude 'deps.properties'
-        }
+        // Copy files from source and overlay bundle files (bin overrides)
+        println "Copying ConsoleZ files..."
         
         // Process dependencies if deps.properties exists
         def depsFile = file("${bundlePath}/deps.properties")
@@ -560,7 +604,7 @@ tasks.register('release') {
                 println ""
                 println "Download ANSICON"
                 def ansiconUrl = depsProps.getProperty('ansicon')
-                def ansiconPath = file("${bundleSrcDest}/ansicon")
+                def ansiconPath = file("${bundleSrcFinal}/ansicon")
                 
                 def ansiconTempDir = downloadAndExtract(ansiconUrl, file("${bundleTmpPath}/ansicon-temp"))
                 
@@ -583,7 +627,7 @@ tasks.register('release') {
                 println ""
                 println "Download Clink"
                 def clinkUrl = depsProps.getProperty('clink')
-                def clinkPath = file("${bundleSrcDest}/vendor/clink")
+                def clinkPath = file("${bundleSrcFinal}/vendor/clink")
                 
                 def clinkTempDir = downloadAndExtract(clinkUrl, file("${bundleTmpPath}/clink-temp"))
                 
@@ -609,7 +653,7 @@ tasks.register('release') {
                 println ""
                 println "Download Clink completions"
                 def clinkCompletionsUrl = depsProps.getProperty('clink_completions')
-                def clinkCompletionsPath = file("${bundleSrcDest}/vendor/clink-completions")
+                def clinkCompletionsPath = file("${bundleSrcFinal}/vendor/clink-completions")
                 
                 def clinkCompletionsTempDir = downloadAndExtract(clinkCompletionsUrl, file("${bundleTmpPath}/clink-completions-temp"))
                 
@@ -635,7 +679,7 @@ tasks.register('release') {
                 println ""
                 println "Download GnuWin32 CoreUtils bin"
                 def gnuwin32BinUrl = depsProps.getProperty('gnuwin32_coreutils_bin')
-                def gnuwin32Path = file("${bundleSrcDest}/vendor/gnuwin32")
+                def gnuwin32Path = file("${bundleSrcFinal}/vendor/gnuwin32")
                 
                 def gnuwin32BinTempDir = downloadAndExtract(gnuwin32BinUrl, file("${bundleTmpPath}/gnuwin32-bin-temp"))
                 
@@ -658,7 +702,7 @@ tasks.register('release') {
                 println ""
                 println "Download GnuWin32 CoreUtils dep"
                 def gnuwin32DepUrl = depsProps.getProperty('gnuwin32_coreutils_dep')
-                def gnuwin32Path = file("${bundleSrcDest}/vendor/gnuwin32")
+                def gnuwin32Path = file("${bundleSrcFinal}/vendor/gnuwin32")
                 
                 def gnuwin32DepTempDir = downloadAndExtract(gnuwin32DepUrl, file("${bundleTmpPath}/gnuwin32-dep-temp"))
                 
@@ -689,7 +733,7 @@ tasks.register('release') {
         
         // Copy all files to prep directory
         copy {
-            from bundleSrcDest
+            from bundleSrcFinal
             into consolezPrepPath
         }
         
@@ -817,7 +861,7 @@ tasks.register('release') {
         println ""
         println "=".multiply(70)
         println "[SUCCESS] Release build completed successfully for version ${versionToBuild}"
-        println "Output directory: ${buildBinsPath}"
+        println "Output directory: ${nonZipBuildPath}"
         println "Archive: ${destFile}.${bundleFormat}"
         println "=".multiply(70)
     }
@@ -981,7 +1025,6 @@ tasks.register('verify') {
         
         // Check required files
         checks['build.properties'] = file('build.properties').exists()
-        checks['releases.properties'] = file('releases.properties').exists()
         
         // Check dev directory
         checks['dev directory'] = file(devPath).exists()
@@ -1008,6 +1051,7 @@ tasks.register('verify') {
             println "\nYou can now run:"
             println "  gradle release -PbundleVersion=1.19.0.19104   - Build release for version"
             println "  gradle listVersions                            - List available versions"
+            println "  gradle listReleases                            - List releases from modules-untouched"
         } else {
             println "\n[WARNING] Some checks failed. Please review the requirements."
             throw new GradleException("Build environment verification failed")
@@ -1015,28 +1059,92 @@ tasks.register('verify') {
     }
 }
 
-// Task: List all bundle versions from releases.properties
+// Task: List all bundle releases from modules-untouched properties
 tasks.register('listReleases') {
     group = 'help'
-    description = 'List all available releases from releases.properties'
+    description = 'List all available releases from modules-untouched'
     
     doLast {
-        def releasesFile = file('releases.properties')
-        if (!releasesFile.exists()) {
-            println "releases.properties not found"
+        def props = fetchModulesUntouchedProperties()
+        if (!props) {
+            println "\n[WARNING] Could not fetch modules-untouched properties."
+            println "No release information available."
             return
         }
-        
-        def releases = new Properties()
-        releasesFile.withInputStream { releases.load(it) }
-        
-        println "\nAvailable ConsoleZ Releases:"
+
+        println "\nAvailable ${bundleName.capitalize()} Releases (modules-untouched):"
         println "-".multiply(80)
-        releases.sort { it.key }.each { version, url ->
+        props.sort { a, b -> a.key <=> b.key }.each { version, url ->
             println "  ${version.padRight(15)} -> ${url}"
         }
         println "-".multiply(80)
-        println "Total releases: ${releases.size()}"
+        println "Total releases: ${props.size()}"
+    }
+}
+
+// Task: Check modules-untouched integration for this module
+tasks.register('checkModulesUntouched') {
+    group = 'verification'
+    description = 'Check modules-untouched repository integration and available versions'
+
+    doLast {
+        println ""
+        println "=".multiply(70)
+        println "Modules-Untouched Integration Check"
+        println "=".multiply(70)
+        println ""
+
+        def propsUrl = "https://raw.githubusercontent.com/Bearsampp/modules-untouched/main/modules/${bundleName}.properties"
+        println "Repository URL:"
+        println "  ${propsUrl}"
+        println ""
+
+        println "Fetching ${bundleName}.properties from modules-untouched..."
+        def untouchedProps = fetchModulesUntouchedProperties()
+
+        if (untouchedProps) {
+            println ""
+            println "=".multiply(70)
+            println "Available Versions in modules-untouched"
+            println "=".multiply(70)
+
+            def sortedVersions = untouchedProps.sort { a, b ->
+                def aParts = a.key.tokenize('.')
+                def bParts = b.key.tokenize('.')
+                for (int i = 0; i < Math.min(aParts.size(), bParts.size()); i++) {
+                    def aNum = aParts[i].toInteger()
+                    def bNum = bParts[i].toInteger()
+                    if (aNum != bNum) return aNum <=> bNum
+                }
+                return aParts.size() <=> bParts.size()
+            }
+
+            sortedVersions.each { version, url ->
+                println "  ${version.padRight(10)}"
+            }
+
+            println "=".multiply(70)
+            println "Total versions: ${untouchedProps.size()}"
+            println ""
+
+            println ""
+            println "=".multiply(70)
+            println "[SUCCESS] modules-untouched integration is working"
+            println "=".multiply(70)
+            println ""
+            println "Version Resolution Strategy:"
+            println "  1. Check modules-untouched ${bundleName}.properties (remote)"
+            println "  2. Local releases.properties (fallback, if present)"
+            println "  3. Construct standard URL format (last fallback)"
+        } else {
+            println ""
+            println "=".multiply(70)
+            println "[WARNING] Could not fetch ${bundleName}.properties from modules-untouched"
+            println "=".multiply(70)
+            println ""
+            println "This may be due to network issues or file unavailability."
+            println "The build will fall back to local releases.properties (if present) or a constructed URL."
+        }
     }
 }
 
@@ -1166,7 +1274,7 @@ tasks.register('downloadConsoleZ') {
         }
 
         println "Downloading ConsoleZ ${version}..."
-        def extractDir = downloadModuleUntouched(bundleName, version)
+        def extractDir = downloadFromModulesUntouched(bundleName, version)
         println "[SUCCESS] Downloaded and extracted to: ${extractDir}"
     }
 }
