@@ -786,16 +786,18 @@ tasks.register('release') {
             println "Using 7-Zip: ${sevenZipExe}"
             
             // Create 7z archive
+            // Include the version folder itself, not only its contents
             def command = [
                 sevenZipExe,
                 'a',
                 '-t7z',
                 archiveFile.absolutePath.toString(),
-                '.'
+                bundleFolder
             ]
-            
+
+            // Run from the prep parent directory so the folder is included at archive root
             def process = new ProcessBuilder(command as String[])
-                .directory(consolezPrepPath)
+                .directory(bundleTmpPrepPath)
                 .redirectErrorStream(true)
                 .start()
             
@@ -823,7 +825,8 @@ tasks.register('release') {
             
             println "Compressing ${bundleName}${bundleVersion} to ${archiveFile.name}..."
             
-            ant.zip(destfile: archiveFile, basedir: consolezPrepPath)
+            // Include the version folder itself, not only its contents
+            ant.zip(destfile: archiveFile, basedir: bundleTmpPrepPath, includes: "${bundleFolder}/**")
             
             println "Archive created: ${archiveFile}"
             
