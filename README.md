@@ -27,26 +27,26 @@ ConsoleZ is an enhanced console window for Windows featuring tabs, text editor-l
 | Software      | Version    | Required | Download                                    |
 |---------------|------------|----------|---------------------------------------------|
 | Java JDK      | 8 or later | Yes      | https://adoptium.net/                       |
-| Gradle        | 7.0+       | Yes*     | https://gradle.org/ (*included via wrapper) |
+| Gradle        | 8.0+       | Yes      | https://gradle.org/                         |
 | 7-Zip         | Latest     | Yes**    | https://www.7-zip.org/ (**for .7z format)   |
 
 ### Build Commands
 
 ```powershell
 # Build a specific version
-gradlew release -PbundleVersion=1.19.0.19104
+gradle release -PbundleVersion=1.19.0.19104
 
 # Build all available versions
-gradlew releaseAll
+gradle releaseAll
 
 # List available versions
-gradlew listVersions
+gradle listVersions
 
 # Verify build environment
-gradlew verify
+gradle verify
 
 # Show all available tasks
-gradlew tasks
+gradle tasks
 ```
 
 ---
@@ -75,11 +75,9 @@ module-consolez/
 │   └── TROUBLESHOOTING.md        # Troubleshooting guide
 ├── bin/                          # ConsoleZ version directories
 │   └── consolez{version}/        # Version-specific files
-├── gradle/                       # Gradle wrapper files
 ├── build.gradle                  # Main Gradle build script
 ├── build.properties              # Bundle configuration
 ├── gradle.properties             # Gradle runtime configuration
-├── gradlew.bat                   # Gradle wrapper (Windows)
 ├── releases.properties           # Version to URL mappings
 └── settings.gradle               # Gradle project settings
 ```
@@ -120,22 +118,22 @@ bundle.format   = 7z              # Archive format (7z or zip)
 
 ```powershell
 # Non-interactive mode
-gradlew release -PbundleVersion=1.19.0.19104
+gradle release -PbundleVersion=1.19.0.19104
 
 # Interactive mode (prompts for version selection)
-gradlew release
+gradle release
 ```
 
 ### Build All Versions
 
 ```powershell
-gradlew releaseAll
+gradle releaseAll
 ```
 
 ### Verify Environment
 
 ```powershell
-gradlew verify
+gradle verify
 ```
 
 **Output**:
@@ -179,10 +177,17 @@ C:/Bearsampp-build/
 - **GitHub Repository**: https://github.com/bearsampp/module-consolez
 - **Build Documentation**: [.gradle-docs/README.md](.gradle-docs/README.md)
 
+---
+
+## Notes
+
+This project deliberately does not ship the Gradle Wrapper. Install Gradle 8+ locally and run with `gradle ...`.
+
+---
+
 ## Issues
 
 Issues must be reported on [Bearsampp repository](https://github.com/bearsampp/bearsampp/issues).
-
 
 ## Sponsors
 

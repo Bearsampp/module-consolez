@@ -5,6 +5,9 @@
 # Bearsampp
 /.dev
 
+# Gradle
+.gradle
+
 # Visual Studio
 .vscode/
 .vs/

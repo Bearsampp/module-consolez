@@ -50,7 +50,7 @@ The ConsoleZ module provides an enhanced console window for Windows, featuring t
 | Software      | Version    | Purpose                                    | Download                                    |
 |---------------|------------|--------------------------------------------|---------------------------------------------|
 | Java JDK      | 8 or later | Required to run Gradle                     | https://adoptium.net/                       |
-| Gradle        | 7.0+       | Build automation tool (included via wrapper)| https://gradle.org/                         |
+| Gradle        | 8.0+       | Build automation tool                      | https://gradle.org/                         |
 | 7-Zip         | Latest     | Required for .7z archive compression       | https://www.7-zip.org/                      |
 
 ### Environment Setup
@@ -65,9 +65,9 @@ The ConsoleZ module provides an enhanced console window for Windows, featuring t
    - Install 7-Zip to default location: `C:\Program Files\7-Zip\`
    - Or set `7Z_HOME` environment variable to custom installation path
 
-3. **Gradle Wrapper**
-   - Included in the project (no separate installation needed)
-   - Use `gradlew.bat` on Windows or `./gradlew` on Unix-like systems
+3. **Gradle Installation**
+   - Install Gradle 8.0+ locally from https://gradle.org/
+   - This project does not include the Gradle wrapper
 
 ---
 
@@ -77,28 +77,28 @@ The ConsoleZ module provides an enhanced console window for Windows, featuring t
 
 ```powershell
 # Build a specific ConsoleZ version
-gradlew release -PbundleVersion=1.19.0.19104
+gradle release -PbundleVersion=1.19.0.19104
 ```
 
 ### Build All Versions
 
 ```powershell
 # Build all available versions in bin/ directory
-gradlew releaseAll
+gradle releaseAll
 ```
 
 ### List Available Versions
 
 ```powershell
 # Show all versions available for building
-gradlew listVersions
+gradle listVersions
 ```
 
 ### Verify Build Environment
 
 ```powershell
 # Check if all prerequisites are met
-gradlew verify
+gradle verify
 ```
 
 ---
@@ -148,27 +148,27 @@ Maps ConsoleZ versions to download URLs:
 
 | Task                          | Description                                                    | Example                                      |
 |-------------------------------|----------------------------------------------------------------|----------------------------------------------|
-| `release`                     | Build release for specific version                             | `gradlew release -PbundleVersion=1.19.0.19104` |
-| `releaseAll`                  | Build all available versions                                   | `gradlew releaseAll`                         |
-| `clean`                       | Clean build artifacts and temporary files                      | `gradlew clean`                              |
-| `downloadConsoleZ`            | Download ConsoleZ package directly                             | `gradlew downloadConsoleZ -PconsolezVersion=1.19.0.19104` |
+| `release`                     | Build release for specific version                             | `gradle release -PbundleVersion=1.19.0.19104` |
+| `releaseAll`                  | Build all available versions                                   | `gradle releaseAll`                         |
+| `clean`                       | Clean build artifacts and temporary files                      | `gradle clean`                              |
+| `downloadConsoleZ`            | Download ConsoleZ package directly                             | `gradle downloadConsoleZ -PconsolezVersion=1.19.0.19104` |
 
 ### Verification Tasks
 
 | Task                          | Description                                                    | Example                                      |
 |-------------------------------|----------------------------------------------------------------|----------------------------------------------|
-| `verify`                      | Verify build environment and dependencies                      | `gradlew verify`                             |
-| `validateProperties`          | Validate build.properties configuration                        | `gradlew validateProperties`                 |
-| `checkDeps`                   | Check dependencies configuration in bin directories            | `gradlew checkDeps`                          |
+| `verify`                      | Verify build environment and dependencies                      | `gradle verify`                             |
+| `validateProperties`          | Validate build.properties configuration                        | `gradle validateProperties`                 |
+| `checkDeps`                   | Check dependencies configuration in bin directories            | `gradle checkDeps`                          |
 
 ### Information Tasks
 
 | Task                          | Description                                                    | Example                                      |
 |-------------------------------|----------------------------------------------------------------|----------------------------------------------|
-| `info`                        | Display build information and available tasks                  | `gradlew info`                               |
-| `listVersions`                | List available bundle versions in bin/ directories             | `gradlew listVersions`                       |
-| `listReleases`                | List releases from releases.properties                         | `gradlew listReleases`                       |
-| `tasks`                       | Show all available Gradle tasks                                | `gradlew tasks`                              |
+| `info`                        | Display build information and available tasks                  | `gradle info`                               |
+| `listVersions`                | List available bundle versions in bin/ directories             | `gradle listVersions`                       |
+| `listReleases`                | List releases from releases.properties                         | `gradle listReleases`                       |
+| `tasks`                       | Show all available Gradle tasks                                | `gradle tasks`                              |
 
 ---
 
@@ -235,17 +235,11 @@ module-consolez/
 │   │   └── deps.properties       # Dependency URLs
 │   └── archived/                 # Archived versions
 ├── build/                        # Gradle build output
-├── gradle/                       # Gradle wrapper files
-│   └── wrapper/
-│       ├── gradle-wrapper.jar
-│       └── gradle-wrapper.properties
 ├── img/                          # Images and assets
 │   └── Bearsampp-logo.svg
 ├── build.gradle                  # Main Gradle build script
 ├── build.properties              # Bundle configuration
 ├── gradle.properties             # Gradle runtime configuration
-├── gradlew                       # Gradle wrapper script (Unix)
-├── gradlew.bat                   # Gradle wrapper script (Windows)
 ├── releases.properties           # Version to URL mappings
 ├── settings.gradle               # Gradle project settings
 └── README.md                     # Project overview
@@ -316,7 +310,7 @@ gnuwin32_coreutils_dep=https://downloads.sourceforge.net/project/gnuwin32/coreut
 **Error**: `Bundle version not found: consolez1.19.0.19104`
 
 **Solution**:
-- Check available versions: `gradlew listVersions`
+- Check available versions: `gradle listVersions`
 - Ensure version directory exists in `bin/` or `bin/archived/`
 - Verify directory name matches pattern: `consolez{version}`
 
@@ -353,7 +347,7 @@ gnuwin32_coreutils_dep=https://downloads.sourceforge.net/project/gnuwin32/coreut
 
 4. Build and test:
    ```powershell
-   gradlew release -PbundleVersion={version}
+   gradle release -PbundleVersion={version}
    ```
 
 ### Modifying Build Process
@@ -363,7 +357,7 @@ gnuwin32_coreutils_dep=https://downloads.sourceforge.net/project/gnuwin32/coreut
 3. Modify `gradle.properties` for Gradle runtime settings
 4. Test changes thoroughly:
    ```powershell
-   gradlew clean verify release -PbundleVersion=1.19.0.19104
+   gradle clean verify release -PbundleVersion=1.19.0.19104
    ```
 
 ---
@@ -395,6 +389,9 @@ This project is part of the Bearsampp ecosystem. See [LICENSE](../LICENSE) for d
 
 ---
 
-**Last Updated**: 2024
-**Gradle Version**: 7.0+
-**Build System**: Pure Gradle (Ant-free)
+**Last Updated**: 2025
+**Gradle Version**: 8.0+
+**Build System**: Pure Gradle (no wrapper, no Ant)
+
+**Notes**:
+- This project deliberately does not ship the Gradle Wrapper. Install Gradle 8+ locally and run with `gradle ...`.
