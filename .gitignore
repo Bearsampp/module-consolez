@@ -5,6 +5,9 @@
 # Bearsampp
 /.dev
 
+# Gradle
+.gradle
+
 # Visual Studio
 .vscode/
 .vs/
@@ -12,6 +15,3 @@
 
 # ignore "current" directories
 /**/current
-
-# Qodo
-/.qodo
